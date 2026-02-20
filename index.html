@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Эхо хоррор · Блуждающий монстр</title>
+    <style>
+        /* ------- ИНТЕРФЕЙС САЙТА ------- */
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            background: radial-gradient(circle at 20% 30%, #1a1a1a, #0a0a0a);
+            font-family: 'Courier New', monospace;
+            color: #b0b0b0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #3a3a3a;
+            padding-bottom: 10px;
+            max-width: 1200px;
+            width: 100%;
+        }
+        header h1 {
+            color: #d44;
+            text-shadow: 0 0 5px #f00, 0 0 15px #800;
+            font-size: 2.5rem;
+            letter-spacing: 6px;
+            margin: 0;
+            text-transform: uppercase;
+        }
+        header p {
+            color: #aaa;
+            font-size: 1rem;
+            margin: 5px 0 0;
+            opacity: 0.8;
+        }
+
+        /* Игровое окно 16:9 */
+        .game-window {
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            aspect-ratio: 16 / 9;
+            margin: 0 auto;
+            border: 3px solid #2a2a2a;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(200, 0, 0, 0.3);
+            background: black;
+        }
+        .game-window canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+            image-rendering: crisp-edges;
+        }
+
+        /* HUD */
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+            font-weight: bold;
+            text-shadow: 0 0 8px black;
+        }
+        #sonar-ready {
+            font-size: 26px;
+            color: #0f0;
+            text-shadow: 0 0 12px #0f0;
+            transition: color 0.1s;
+        }
+        .hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 8px;
+            border-left: 2px solid #f44;
+        }
+
+        /* Экран смерти и победы */
+        .screamer, .win-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: none;
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .noise {
+            background: repeating-linear-gradient(45deg, rgba(255,0,0,0.1) 0px, rgba(255,0,0,0.1) 2px, rgba(0,0,0,0.8) 2px, rgba(0,0,0,0.8) 6px);
+            background-size: 10px 10px;
+            opacity: 0.7;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            animation: flicker 0.15s infinite alternate;
+        }
+        @keyframes flicker {
+            0% { opacity: 0.5; }
+            100% { opacity: 0.9; }
+        }
+        .screamer h1 {
+            font-size: 70px;
+            color: #f44;
+            position: relative;
+            z-index: 1100;
+            text-shadow: 0 0 20px red, 0 0 40px #a00;
+            border: 2px solid red;
+            padding: 20px 40px;
+            background: rgba(0,0,0,0.7);
+            animation: glitch 0.2s infinite;
+        }
+        .win-screen h1 {
+            font-size: 70px;
+            color: #4f4;
+            position: relative;
+            z-index: 1100;
+            text-shadow: 0 0 20px #0f0, 0 0 40px #0a0;
+            border: 2px solid #0f0;
+            padding: 20px 40px;
+            background: rgba(0,0,0,0.7);
+        }
+        @keyframes glitch {
+            0% { transform: skew(0deg, 0deg); }
+            20% { transform: skew(2deg, 1deg); }
+            40% { transform: skew(-2deg, -1deg); }
+            60% { transform: skew(1deg, -1deg); }
+            80% { transform: skew(-1deg, 2deg); }
+            100% { transform: skew(0deg, 0deg); }
+        }
+
+        footer {
+            margin-top: 30px;
+            color: #555;
+            font-size: 14px;
+            border-top: 1px solid #2a2a2a;
+            padding-top: 15px;
+            max-width: 1200px;
+            width: 100%;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        footer span {
+            color: #a22;
+        }
+        @media (max-width: 900px) {
+            .game-window { width: 95%; }
+            header h1 { font-size: 2rem; }
+            .screamer h1, .win-screen h1 { font-size: 40px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>└ ЭХО ХОРРОР ┘</h1>
+    <p>монстра видно лишь раз в 5 секунд</p>
+</header>
+
+<main>
+    <div id="gameContainer" class="game-window">
+        <canvas id="game"></canvas>
+
+        <!-- HUD -->
+        <div id="hud">
+            <div id="sonar-ready">Эхо готово</div>
+            <div class="hint">W A S D — шаг | ЛКМ — эхолот</div>
+            <div style="font-size: 11px; color: #ff0; margin-top: 5px;">👁️ Видимость: раз в 5 сек</div>
+        </div>
+
+        <!-- Экран смерти -->
+        <div id="scream" class="screamer">
+            <div class="noise"></div>
+            <h1>⚡ СИГНАЛ ПОТЕРЯН ⚡</h1>
+        </div>
+
+        <!-- Экран победы -->
+        <div id="win" class="win-screen">
+            <div class="noise" style="background: repeating-linear-gradient(45deg, rgba(0,255,0,0.1) 0px, rgba(0,255,0,0.1) 2px, rgba(0,0,0,0.8) 2px, rgba(0,0,0,0.8) 6px);"></div>
+            <h1>✦ ВЫХОД НАЙДЕН ✦</h1>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <span>✦</span> тьма скрывает его <span>✦</span>
+</footer>
+
+<script>
+    // ----------------------------------------------------------------
+    //  ЭХО-ЛОКАТОР · РАСШИРЕННАЯ ВЕРСИЯ
+    //  – карта 35x35, старт игрока и монстра — случайные
+    //  – монстр медленно движется к игроку (автономно)
+    //  – видимость монстра: только раз в 5 секунд (плюс при попадании эха)
+    //  – мини-карта памяти стен
+    //  – полный русский интерфейс
+    // ----------------------------------------------------------------
+
+    // ----- ИНИЦИАЛИЗАЦИЯ КАНВАСА -----
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const sonarUI = document.getElementById('sonar-ready');
+    const gameContainer = document.getElementById('gameContainer');
+
+    // ----- ПАРАМЕТРЫ МИРА (увеличенная карта) -----
+    const MAP_SIZE = 35;            // больше и случайнее
+    let grid = [];                // 0 - проход, 1 - стена, 2 - выход
+    let wallGlow = [];           // память стен для мини-карты (0..2.5)
+    let particles = [];
+    let charge = 100;
+    let isDead = false;
+    let isWin = false;
+
+    // ----- ИГРОК -----
+    let player = { x: 1.5, y: 1.5, dir: 0 };
+
+    // ----- МОНСТР (теперь с автономным движением и скрытностью) -----
+    let monster = {
+        x: MAP_SIZE - 1.5, y: MAP_SIZE - 1.5,
+        velX: 0, velY: 0,
+        visible: 0,             // 0 - невидим, >0 - яркость (время видимости)
+        visibleTimer: 0        // таймер для периодической вспышки
+    };
+
+    // ----- ВЫХОД -----
+    let exitPos = { x: 0, y: 0 };
+
+    // ----- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ -----
+    function randomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // ----- ГЕНЕРАЦИЯ ЛАБИРИНТА (Recursive Backtracker) -----
+    function generateMaze() {
+        grid = Array(MAP_SIZE * MAP_SIZE).fill(1);
+        wallGlow = Array(MAP_SIZE * MAP_SIZE).fill(0);
+
+        const stack = [{ x: 1, y: 1 }];
+        grid[1 + 1 * MAP_SIZE] = 0;
+
+        while (stack.length) {
+            const curr = stack[stack.length - 1];
+            const dirs = [[0,2], [0,-2], [2,0], [-2,0]].sort(() => Math.random() - 0.5);
+            let moved = false;
+            for (let [dx, dy] of dirs) {
+                const nx = curr.x + dx, ny = curr.y + dy;
+                if (nx > 0 && nx < MAP_SIZE && ny > 0 && ny < MAP_SIZE && grid[nx + ny * MAP_SIZE] === 1) {
+                    grid[(curr.x + dx/2) + (curr.y + dy/2) * MAP_SIZE] = 0;
+                    grid[nx + ny * MAP_SIZE] = 0;
+                    stack.push({ x: nx, y: ny });
+                    moved = true;
+                    break;
+                }
+            }
+            if (!moved) stack.pop();
+        }
+
+        // ----- СОБИРАЕМ ВСЕ СВОБОДНЫЕ КЛЕТКИ (для размещения игрока и монстра) -----
+        let emptyCells = [];
+        for (let y = 1; y < MAP_SIZE - 1; y++) {
+            for (let x = 1; x < MAP_SIZE - 1; x++) {
+                if (grid[x + y * MAP_SIZE] === 0) emptyCells.push({ x, y });
+            }
+        }
+
+        // ----- ИГРОК: случайная свободная клетка -----
+        const playerStart = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+        player.x = playerStart.x + 0.5;
+        player.y = playerStart.y + 0.5;
+
+        // ----- ВЫХОД: самая дальняя клетка от старта игрока -----
+        let maxDist = 0;
+        emptyCells.forEach(cell => {
+            const dist = Math.hypot(cell.x + 0.5 - player.x, cell.y + 0.5 - player.y);
+            if (dist > maxDist) {
+                maxDist = dist;
+                exitPos = { x: cell.x, y: cell.y };
+            }
+        });
+        grid[exitPos.x + exitPos.y * MAP_SIZE] = 2; // помечаем выход
+
+        // ----- МОНСТР: случайная свободная клетка, не слишком близко к игроку -----
+        let farCells = emptyCells.filter(cell => {
+            const dist = Math.hypot(cell.x + 0.5 - player.x, cell.y + 0.5 - player.y);
+            return dist > 10; // минимум 10 клеток от игрока
+        });
+        if (farCells.length === 0) farCells = emptyCells; // запасной вариант
+        const monsterStart = farCells[Math.floor(Math.random() * farCells.length)];
+        monster.x = monsterStart.x + 0.5;
+        monster.y = monsterStart.y + 0.5;
+        monster.velX = 0; monster.velY = 0;
+        monster.visible = 0;
+        monster.visibleTimer = 0;
+    }
+
+    // ----- АУДИО -----
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, duration, volume, type = 'sawtooth') {
+        if (isDead || isWin) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // ----- ЭХО: ЛЕВАЯ КНОПКА МЫШИ -----
+    function emitEcho() {
+        if (charge < 100 || isDead || isWin) return;
+        charge = 0;
+        playSound(250, 0.4, 0.3, 'sine');
+
+        for (let i = 0; i < 250; i++) {
+            const angle = (player.dir - 1.0) + Math.random() * 2.0;
+            particles.push({
+                x: player.x, y: player.y,
+                vx: Math.cos(angle) * 0.4,
+                vy: Math.sin(angle) * 0.4,
+                life: 4
+            });
+        }
+    }
+
+    // ----- ПРОВЕРКА, ВИДИТ ЛИ ИГРОК МОНСТРА (без стен) -----
+    function isMonsterInSight() {
+        if (monster.visible <= 0) return false; // если невидим, то и проверять не нужно
+        const dx = monster.x - player.x;
+        const dy = monster.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 12) return false;
+
+        let angle = Math.atan2(dy, dx) - player.dir;
+        while (angle < -Math.PI) angle += 2 * Math.PI;
+        while (angle > Math.PI) angle -= 2 * Math.PI;
+        if (Math.abs(angle) > 0.9) return false;
+
+        const steps = Math.ceil(dist * 4);
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const cx = player.x + dx * t;
+            const cy = player.y + dy * t;
+            const cell = grid[Math.floor(cy) * MAP_SIZE + Math.floor(cx)];
+            if (cell === 1) return false;
+        }
+        return true;
+    }
+
+    // ----- ПОБЕДА -----
+    function winGame() {
+        if (isWin || isDead) return;
+        isWin = true;
+        document.getElementById('win').style.display = 'flex';
+        playSound(600, 1.5, 0.4, 'sine');
+        playSound(900, 1.2, 0.3, 'sine');
+        setTimeout(() => location.reload(), 2000);
+    }
+
+    // ----- СМЕРТЬ -----
+    function triggerScreamer() {
+        if (isDead || isWin) return;
+        isDead = true;
+        document.getElementById('scream').style.display = 'flex';
+        playSound(60, 2, 1, 'sawtooth');
+        playSound(20, 2, 1, 'square');
+        setTimeout(() => location.reload(), 2000);
+    }
+
+    // ----- УПРАВЛЕНИЕ -----
+    const keys = {};
+    window.onkeydown = e => keys[e.code] = true;
+    window.onkeyup = e => keys[e.code] = false;
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) {
+            emitEcho();
+            e.preventDefault();
+        }
+    });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // ----- ПОДГОН РАЗМЕРА КАНВАСА ПОД КОНТЕЙНЕР -----
+    function resizeCanvas() {
+        const rect = gameContainer.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // ----- ИГРОВАЯ ЛОГИКА -----
+    function update() {
+        if (isDead || isWin) return;
+
+        // --- Движение игрока ---
+        const SPEED = 0.035;
+        let nx = player.x, ny = player.y;
+        if (keys['KeyW']) { nx += Math.cos(player.dir) * SPEED; ny += Math.sin(player.dir) * SPEED; }
+        if (keys['KeyS']) { nx -= Math.cos(player.dir) * SPEED; ny -= Math.sin(player.dir) * SPEED; }
+        if (keys['KeyA']) player.dir -= 0.065;
+        if (keys['KeyD']) player.dir += 0.065;
+
+        const cell = grid[Math.floor(ny) * MAP_SIZE + Math.floor(nx)];
+        if (cell === 0 || cell === 2) {
+            player.x = nx;
+            player.y = ny;
+        }
+
+        // --- Проверка выхода ---
+        if (Math.floor(player.x) === exitPos.x && Math.floor(player.y) === exitPos.y) {
+            winGame();
+        }
+
+        // --- Частицы эха и подсветка стен ---
+        particles.forEach((p, idx) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.04;
+
+            const cellX = Math.floor(p.x);
+            const cellY = Math.floor(p.y);
+            const idxCell = cellX + cellY * MAP_SIZE;
+
+            if (grid[idxCell] === 1) {
+                p.vx *= -0.8;
+                p.vy *= -0.8;
+                wallGlow[idxCell] = Math.min(wallGlow[idxCell] + 2.0, 2.5);
+            }
+
+            // --- Попадание в монстра ---
+            const dM = Math.hypot(p.x - monster.x, p.y - monster.y);
+            if (dM < 0.6) {
+                monster.velX += (player.x - monster.x) * 0.0008;
+                monster.velY += (player.y - monster.y) * 0.0008;
+                // при попадании эха монстр становится видимым на 2 секунды
+                monster.visible = Math.max(monster.visible, 2.0);
+                p.life = 0;
+            }
+
+            if (p.life <= 0) particles.splice(idx, 1);
+        });
+
+        // --- Затухание памяти стен ---
+        for (let i = 0; i < wallGlow.length; i++) {
+            if (wallGlow[i] > 0) {
+                wallGlow[i] -= 0.012;
+                if (wallGlow[i] < 0) wallGlow[i] = 0;
+            }
+        }
+
+        // --- АВТОНОМНОЕ ДВИЖЕНИЕ МОНСТРА (медленно идёт к игроку) ---
+        const dxToPlayer = player.x - monster.x;
+        const dyToPlayer = player.y - monster.y;
+        const distToPlayer = Math.hypot(dxToPlayer, dyToPlayer);
+        if (distToPlayer > 0.5) { // не подходить вплотную (иначе сразу смерть)
+            const normX = dxToPlayer / distToPlayer;
+            const normY = dyToPlayer / distToPlayer;
+            monster.velX += normX * 0.008; // медленное притяжение
+            monster.velY += normY * 0.008;
+        }
+
+        // --- Применяем скорость и трение ---
+        monster.x += monster.velX;
+        monster.y += monster.velY;
+        monster.velX *= 0.98;
+        monster.velY *= 0.98;
+
+        // --- Стены для монстра ---
+        if (grid[Math.floor(monster.y) * MAP_SIZE + Math.floor(monster.x)] === 1) {
+            monster.x -= monster.velX * 0.8;
+            monster.y -= monster.velY * 0.8;
+            monster.velX *= -0.3;
+            monster.velY *= -0.3;
+        }
+
+        // --- ТАЙМЕР ВИДИМОСТИ (раз в 5 секунд вспышка) ---
+        monster.visibleTimer += 1/24; // при 24 кадрах/сек
+        if (monster.visibleTimer >= 5.0) {
+            monster.visibleTimer = 0;
+            monster.visible = Math.max(monster.visible, 0.8); // виден 0.8 секунды
+        }
+
+        // --- Уменьшение времени видимости ---
+        if (monster.visible > 0) {
+            monster.visible -= 0.025; // плавное затухание
+            if (monster.visible < 0) monster.visible = 0;
+        }
+
+        // --- Контакт с игроком = смерть ---
+        if (Math.hypot(player.x - monster.x, player.y - monster.y) < 0.5) {
+            triggerScreamer();
+        }
+
+        // --- Перезарядка сонара ---
+        if (charge < 100) {
+            charge += 0.89;
+            sonarUI.style.color = '#222';
+            sonarUI.innerText = 'ПЕРЕЗАРЯДКА';
+        } else {
+            sonarUI.style.color = '#0f0';
+            sonarUI.innerText = 'ЭХО ГОТОВО';
+        }
+    }
+
+    // ----- ОТРИСОВКА -----
+    function draw() {
+        resizeCanvas();
+
+        // --- Очистка ---
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const NUM_RAYS = 250;
+        const FOV = 1.8;
+        const MAX_DIST = 12;
+
+        // --- 3D стены (эхо-освещение) ---
+        for (let i = 0; i < NUM_RAYS; i++) {
+            const rayAngle = (player.dir - FOV/2) + (i / NUM_RAYS) * FOV;
+            let dist = 0;
+            let hit = false;
+
+            while (!hit && dist < MAX_DIST) {
+                dist += 0.04;
+                const rayX = player.x + Math.cos(rayAngle) * dist;
+                const rayY = player.y + Math.sin(rayAngle) * dist;
+                const cellX = Math.floor(rayX);
+                const cellY = Math.floor(rayY);
+                if (cellX < 0 || cellY < 0 || cellX >= MAP_SIZE || cellY >= MAP_SIZE) break;
+                if (grid[cellX + cellY * MAP_SIZE] === 1) hit = true;
+            }
+
+            let brightness = 0;
+            particles.forEach(p => {
+                const px = player.x + Math.cos(rayAngle) * dist;
+                const py = player.y + Math.sin(rayAngle) * dist;
+                const pd = Math.hypot(px - p.x, py - p.y);
+                if (pd < 1.8) brightness += (1.8 - pd) * p.life * 0.25;
+            });
+
+            if (hit && brightness > 0) {
+                const wallHeight = canvas.height / (dist * Math.cos(rayAngle - player.dir));
+                const x = i * (canvas.width / NUM_RAYS);
+                const w = (canvas.width / NUM_RAYS) + 1;
+                ctx.fillStyle = `rgba(169, 179, 174, ${Math.min(brightness, 0.9)})`;
+                ctx.fillRect(x, (canvas.height - wallHeight) / 2, w, wallHeight);
+            }
+        }
+
+        // --- Выход (зелёное свечение) ---
+        const exitAngle = Math.atan2(exitPos.y + 0.5 - player.y, exitPos.x + 0.5 - player.x) - player.dir;
+        let angleExit = exitAngle;
+        while (angleExit < -Math.PI) angleExit += 2 * Math.PI;
+        while (angleExit > Math.PI) angleExit -= 2 * Math.PI;
+        if (Math.abs(angleExit) < 0.9) {
+            const distToExit = Math.hypot(player.x - (exitPos.x + 0.5), player.y - (exitPos.y + 0.5));
+            if (distToExit < MAX_DIST) {
+                let visible = true;
+                const steps = Math.ceil(distToExit * 4);
+                for (let s = 1; s <= steps; s++) {
+                    const t = s / steps;
+                    const cx = player.x + ((exitPos.x + 0.5) - player.x) * t;
+                    const cy = player.y + ((exitPos.y + 0.5) - player.y) * t;
+                    if (grid[Math.floor(cy) * MAP_SIZE + Math.floor(cx)] === 1) {
+                        visible = false;
+                        break;
+                    }
+                }
+                if (visible) {
+                    const x = (angleExit / FOV + 0.5) * canvas.width;
+                    const h = canvas.height / (distToExit * 0.8);
+                    ctx.fillStyle = `rgba(0, 255, 100, ${0.5 + 0.3 * Math.sin(Date.now() * 0.01)})`;
+                    ctx.fillRect(x - h/8, (canvas.height - h)/2, h/4, h);
+                    ctx.fillStyle = '#0f0';
+                    ctx.font = `${Math.min(20, h/4)}px 'Courier New'`;
+                    ctx.fillText('⬆', x - 8, canvas.height/2 - 20);
+                }
+            }
+        }
+
+        // --- МОНСТР (рисуем ТОЛЬКО если visible > 0 и в прямой видимости) ---
+        if (monster.visible > 0 && isMonsterInSight()) {
+            const distMonster = Math.hypot(player.x - monster.x, player.y - monster.y);
+            const angleMonster = Math.atan2(monster.y - player.y, monster.x - player.x) - player.dir;
+            let am = angleMonster;
+            while (am < -Math.PI) am += 2 * Math.PI;
+            while (am > Math.PI) am -= 2 * Math.PI;
+            if (Math.abs(am) < 0.9) {
+                const x = (am / FOV + 0.5) * canvas.width;
+                const h = canvas.height / (distMonster * 0.9);
+                ctx.fillStyle = `rgba(200, 50, 50, ${Math.min(monster.visible, 0.8)})`;
+                ctx.fillRect(x - h/10, (canvas.height - h)/2 - h*0.1, h/5, h * 1.2);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x - 5, canvas.height/2 - 12, 2, 2);
+                ctx.fillRect(x + 5, canvas.height/2 - 12, 2, 2);
+            }
+        }
+
+        // --- МИНИ-КАРТА (правый нижний угол) ---
+        const mapSizePx = 160; // чуть больше из-за увеличенной карты
+        const cellSize = mapSizePx / MAP_SIZE;
+        const offsetX = canvas.width - mapSizePx - 20;
+        const offsetY = canvas.height - mapSizePx - 20;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(offsetX - 5, offsetY - 5, mapSizePx + 10, mapSizePx + 10);
+        ctx.strokeStyle = '#3a3a3a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(offsetX - 5, offsetY - 5, mapSizePx + 10, mapSizePx + 10);
+
+        // --- Стены, запомненные эхом ---
+        for (let y = 0; y < MAP_SIZE; y++) {
+            for (let x = 0; x < MAP_SIZE; x++) {
+                const idx = x + y * MAP_SIZE;
+                if (grid[idx] === 1 && wallGlow[idx] > 0) {
+                    const glow = wallGlow[idx] / 2.5;
+                    ctx.fillStyle = `rgba(180, 180, 180, ${glow * 0.8})`;
+                    ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize - 0.5, cellSize - 0.5);
+                }
+            }
+        }
+
+        // --- Выход (зелёный) ---
+        ctx.fillStyle = '#0f0';
+        ctx.beginPath();
+        ctx.arc(offsetX + (exitPos.x + 0.5) * cellSize, offsetY + (exitPos.y + 0.5) * cellSize, cellSize * 0.4, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.shadowBlur = 8; ctx.shadowColor = '#0f0';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // --- Монстр (красный) — только если видим ---
+        if (monster.visible > 0) {
+            ctx.fillStyle = '#f00';
+            ctx.beginPath();
+            ctx.arc(offsetX + monster.x * cellSize, offsetY + monster.y * cellSize, cellSize * 0.4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.shadowBlur = 8; ctx.shadowColor = '#f00';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // --- Игрок (белый с направлением) ---
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(offsetX + player.x * cellSize, offsetY + player.y * cellSize, cellSize * 0.35, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(offsetX + player.x * cellSize, offsetY + player.y * cellSize);
+        ctx.lineTo(offsetX + (player.x + Math.cos(player.dir) * 1.2) * cellSize, offsetY + (player.y + Math.sin(player.dir) * 1.2) * cellSize);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+
+    // ----- СТАРТ ИГРЫ -----
+    generateMaze();
+    resizeCanvas();
+    setInterval(() => {
+        update();
+        draw();
+    }, 1000 / 24);
+</script>
+</body>
+</html>
